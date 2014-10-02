@@ -82,7 +82,7 @@ SELECT  ymd,price_open,price_high,price_low,price_close,volume,price_adj_close
 FROM    stocks_external WHERE  exchange = 'NYSE' and symbol = 'GEO'
 
 
----------------------------------------Steps to execute it----------------------------------------------------------------------------
+---------------------------------------Steps to execute it This can be done in Hive Editor also----------------------------------------------------------------------------
 
 Step 3:  Run the following HQL script (custom_udf.hql) to compute moving average of stock prices.
 
@@ -119,7 +119,7 @@ DESCRIBE FUNCTION EXTENDED moving_avg;
 
 SELECT ymd, symbol, price_close, moving_avg(50, symbol, price_close)
 FROM stocks
-WHERE symbol = 'AAPL' LIMIT 20;
+WHERE symbol = 'AEA' LIMIT 20;
 
 INSERT OVERWRITE LOCAL DIRECTORY '/tmp/apple_ibm'
 SELECT ymd, symbol, price_close, moving_avg(50, symbol, price_close)
@@ -128,4 +128,4 @@ WHERE symbol = 'AAPL' OR symbol = 'IBM';
 
 -- When you're done with the directory, you can delete it.
 
-You have successfully implemented a custom UDF in HIVE!
+-- You have successfully implemented a custom UDF in HIVE!
