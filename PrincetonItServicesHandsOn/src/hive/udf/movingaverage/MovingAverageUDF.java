@@ -8,7 +8,7 @@ import org.apache.hadoop.hive.ql.exec.UDF;
 import org.apache.hadoop.hive.ql.exec.Description;
 import org.apache.hadoop.io.Text;
 
-
+ 
 public final class MovingAverageUDF extends UDF {
     private Map<Text,LinkedList<Float>> map = new HashMap<Text,LinkedList<Float>>();
 
