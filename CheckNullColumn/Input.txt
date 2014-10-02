@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<TeamConnect><Authentication><Username>conversion</Username>
+<Password>password</Password>
+</Authentication>
+<Transaction commitpolicy="auto" id="Trans1">
+
+14702769,,11/13/2013,11/14/2013,NO,11/13/2013
+
+
+
+
+
+899281,441159,,10/18/2011,,11/13/2013
