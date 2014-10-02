@@ -1,0 +1,85 @@
+PARTITIONING FUNCTIONS
+
+Setting up partitioning functions in SQL Server is a pain. It’s left up to the implementor to decide if the partition function should use range right or range left and how partitions will be swapped in and out. Writing robust partitioning functions is stressful the first time around. What if we didn’t have to define a partition function? What if the database knew how to handle partitioning for us? Hive does just that.
+
+Rather than leave the table partitioning scheme up to the implementor, Hive makes it easy to specify an automatic partition scheme when the table is created:
+
+CREATE TABLE sales (
+    sales_order_id  BIGINT,
+    order_amount    FLOAT,
+    order_date      STRING,
+    due_date        STRING,
+    customer_id     BIGINT
+)
+PARTITIONED BY (country STRING, year INT, month INT, day INT) ;
+As we load data it is written to the appropriate partition in the table. There’s no need to create partitions in advance or set up any kind of partition maintenance; Hive does the hard work for us. The hardest part is writing queries. It’s a rough life, eh?
+
+You might have noticed that while the partitioning key columns are a part of the table DDL, they’re only listed in the PARTITIONED BY clause. This is very different from SQL Server where the partitioning key must be used everywhere in a partitioned table. In Hive, as data is written to disk, each partition of data will be automatically split out into different folders, e.g. country=US/year=2012/month=12/day=22. During a read operation, Hive will use the folder structure to quickly locate the right partitions and also return the partitioning columns as columns in the result set.
+
+This approach means that we save a considerable amount of space on disk and it can be very fast to perform partition elimination. The downside of this approach is that it’s necessary to tell Hive which partition we’re loading in a query. To add data to the partition for the United States on December 22, 2012 we have to write this query:
+
+INSERT INTO sales
+PARTITION (country = 'US', year = 2012, month = 12, day = 22)
+SELECT  sales_order_id,
+        order_amount,
+        due_date,
+        customer_id,
+        cntry,
+        yr,
+        mo,
+        d
+FROM    source_view
+WHERE   cntry = 'US'
+        AND yr = 2012 
+        AND mo = 12
+        AND d = 22 ;
+This is a somewhat inflexible, but effective, approach. Hive makes it difficult to accidentally create tens of thousands of partitions by forcing users to list the specific partition being loaded. This approach is great once you’re using Hive in production but it can be tedious to initially load a large data warehouse when you can only write to one partition at a time. There is a better way.
+
+AUTOMATIC PARTITIONING
+
+With a few quick changes it’s easy to configure Hive to support dynamic partition creation. Just as SQL Server has a SET command to change database options, Hive lets us change settings for a session using the SET command. Changing these settings permanently would require opening a text file and restarting the Hive cluster – it’s not a difficult change, but it’s outside of our scope.
+
+SET hive.exec.dynamic.partition = true;
+SET hive.exec.dynamic.partition.mode = nonstrict;
+Once both of these settings are in place, it’s easy to change our query to dynamically load partitions. Instead of loading partitions one at a time, we can load an entire month or an entire country in one fell swoop:
+
+INSERT INTO sales
+PARTITION (country, year, month, day)
+SELECT  sales_order_id,
+        order_amount,
+        due_date,
+        customer_id,
+        cntry,
+        yr,
+        mo,
+        d
+FROM    source_view
+WHERE   cntry = 'US' ;
+When inserting data into a partition, it’s necessary to include the partition columns as the last columns in the query. The column names in the source query don’t need to match the partition column names, but they really do need to be last – there’s no way to wire up Hive differently.
+
+Be careful using dynamic partitions. Hive has some built-in limits on the number of partitions that can be dynamically created as well as limits on the total number of files that can exist within Hive. Creating many partitions at once will create a lot of files and creating a lot of files will use up memory in the Hadoop Name Node. All of these settings can be changed from their defaults, but those defaults exist to prevent a single INSERT from taking down your entire Hive cluster.
+
+If the number of partitions rises above a certain threshold (in part based on the number of underlying files), you can run into out of memory errors when MapReduce jobs are being generated. In these conditions, even simple SELECT statements can fail. Until the underlying problems are fixed, there are a few workarounds:
+
+Tune Java heap size (not for the faint of heart)
+Find ways to reduce the number of underlying files. This can happen by manipulating load processes to use a single reducer.
+Modify the partition scheme to use fewer partitions. With a rough threshold of 10,000 partitions, most partition schemes can be accommodated. Remember – each partition should contain about 64MB of data, minimum.
+WHAT ABOUT PARTITION SWAPPING?
+
+Much like SQL Server, Hive makes it possible to swap out partitions. Partition swapping is an important feature that makes it easy to change large amounts of data with a minimal impact on database performance. New aggregations can be prepared in the background
+
+How do we perform a partition swap with Hive? A first guess might be to use the INSERT OVERWRITE PARTITION command to replace all data in a partition. This works but it has the downside of deleting all of the data and then re-inserting it. Although Hive has no transaction log, we’ll still have to wait for data to queried and then written to disk. Your second guess might be to load data into a different location, drop the original partition, and then point Hive at the new data like this:
+
+ALTER TABLE sales 
+    DROP IF EXISTS PARTITION 
+    (country = 'US', year = 2012, month = 12, day = 22) ;
+
+ALTER TABLE sales 
+    ADD PARTITION (country = 'US', year = 2012, month = 12, day = 22) 
+    LOCATION 'sales/partitions/us/2012/12/22' ;
+It’s that easy: we’ve swapped out a partition in Hive and removed the old data in one step. . Truthfully, there’s an even easier way using the SET LOCATION clause of ALTER TABLE.
+
+ALTER TABLE sales
+    PARTITION (country = 'US', year = 2012, month = 12, day = 22)
+    SET LOCATION = 'sales/partitions/us/2012/12/22' ;
+Just like that, the new partition will be used. There’s one downside to this approach – the old data will still exist in Hadoop, only the metadata will be changed. If we want to clear out the old data, it’s going to be necessary to run drop down to HDFS commands and delete the old data out of Hadoop itself.
